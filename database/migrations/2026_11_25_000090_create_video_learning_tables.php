@@ -14,6 +14,7 @@ return new class extends Migration
             $table->foreignId('course_id')->constrained()->cascadeOnDelete();
             $table->string('title');
             $table->text('description')->nullable();
+            $table->decimal('price', 10, 2)->default(0);
             $table->string('thumbnail_path')->nullable();
             $table->boolean('is_published')->default(false);
             $table->timestamps();
@@ -50,11 +51,10 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->dateTime('scheduled_start_at');
             $table->dateTime('scheduled_end_at');
-            $table->string('provider')->default('livekit');
-            $table->string('provider_room_name')->unique();
-            $table->string('provider_room_sid')->nullable();
+            $table->string('provider')->default('zoom');
+            $table->text('zoom_meeting_url');
+            $table->decimal('price', 10, 2)->default(0);
             $table->string('status')->default('scheduled');
-            $table->boolean('recording_enabled')->default(true);
             $table->timestamps();
             $table->index(['status', 'scheduled_start_at']);
         });
@@ -62,14 +62,13 @@ return new class extends Migration
         Schema::create('live_recordings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('live_class_id')->constrained()->cascadeOnDelete();
-            $table->string('provider_egress_id')->nullable()->unique();
-            $table->string('status')->default('pending');
-            $table->string('storage_disk')->nullable();
-            $table->string('storage_key')->nullable();
-            $table->text('playback_url')->nullable();
+            $table->string('title');
+            $table->string('drive_file_id')->nullable();
+            $table->string('status')->default('ready');
+            $table->text('playback_url');
+            $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->unsignedInteger('duration_seconds')->nullable();
             $table->string('mime_type')->nullable();
-            $table->text('failure_reason')->nullable();
             $table->dateTime('started_at')->nullable();
             $table->dateTime('completed_at')->nullable();
             $table->timestamps();
