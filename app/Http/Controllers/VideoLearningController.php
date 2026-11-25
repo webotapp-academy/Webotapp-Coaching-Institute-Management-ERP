@@ -30,6 +30,7 @@ class VideoLearningController extends Controller
     {
         $user = auth()->user();
         $isStudent = $user->isStudent();
+        $canManage = $this->canManage();
         $coursesQuery = VideoCourse::with(['course', 'lessons' => function ($query) use ($isStudent) {
             if ($isStudent) {
                 $query->where('is_published', true);
@@ -79,7 +80,7 @@ class VideoLearningController extends Controller
         $faculty = \\App\\Models\\User::where('user_type', 'faculty')->where('status', 'active')->orderBy('name')->get();
 
         return view('video-learning.index', compact(
-            'videoCourses', 'liveClasses', 'recordings', 'courses', 'batches', 'branches', 'faculty', 'isStudent'
+            'videoCourses', 'liveClasses', 'recordings', 'courses', 'batches', 'branches', 'faculty', 'isStudent', 'canManage'
         ));
     }
 
@@ -154,6 +155,10 @@ class VideoLearningController extends Controller
             abort_unless($branchId === auth()->user()->branch_id, 403);
         }
         $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id());
+        $facultyMember = \\App\\Models\\User::whereKey($facultyId)->where('user_type', 'faculty')->where('status', 'active')->first();
+        if (!$facultyMember || (int) $facultyMember->branch_id !== (int) $branchId) {
+            return back()->withErrors(['faculty_id' => 'Select an active faculty member from the class branch.'])->withInput();
+        }
         if ($batch && $facultyId !== auth()->id() && !$batch->faculty()->where('users.id', $facultyId)->exists() && $batch->primary_mentor_id !== $facultyId) {
             return back()->withErrors(['faculty_id' => 'Selected faculty is not assigned to this batch.'])->withInput();
         }
