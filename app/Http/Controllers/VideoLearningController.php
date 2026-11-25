@@ -272,7 +272,7 @@ class VideoLearningController extends Controller
             return back()->withErrors(['branch_id' => 'Create a branch before scheduling live classes.'])->withInput();
         }
 
-        $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id());
+        $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?? auth()->id());
         $facultyMember = \App\Models\User::whereKey($facultyId)
             ->where('user_type', 'faculty')
             ->where('status', 'active')
