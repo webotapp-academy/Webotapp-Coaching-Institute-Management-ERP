@@ -112,6 +112,19 @@
                     </ul>
                 </div>
 
+                <div>
+                    <div class="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">VIDEO LEARNING</div>
+                    <ul class="space-y-1">
+                        <li>
+                            <a href="{{ route('video-learning.index') }}"
+                               class="flex items-center gap-3 px-2.5 py-1.5 rounded-lg transition {{ request()->routeIs('video-learning*') ? 'bg-brand-600 text-white font-semibold' : 'text-slate-300 hover:bg-slate-800 hover:text-white' }}">
+                                <i class="fa-solid fa-circle-play w-4 text-center"></i>
+                                <span>Recorded & Live Classes</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
                 @if($isStudent)
                     <!-- STUDENT EXCLUSIVE MENU -->
                     <div>
