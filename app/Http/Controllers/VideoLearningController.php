@@ -32,7 +32,7 @@ class VideoLearningController extends Controller
         $isStudent = $user->isStudent();
         $coursesQuery = VideoCourse::with(['course', 'lessons' => function ($query) {
             $query->where('is_published', true)->orderBy('sort_order');
-        }])->where('is_published', true);
+        }]);
 
         $classesQuery = LiveClass::with(['course', 'batch', 'faculty', 'recordings'])
             ->orderBy('scheduled_start_at');
@@ -40,7 +40,7 @@ class VideoLearningController extends Controller
         if ($isStudent) {
             $courseIds = $this->studentCourseIds();
             $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
-            $coursesQuery->whereIn('course_id', $courseIds);
+            $coursesQuery->where('is_published', true)->whereIn('course_id', $courseIds);
             $classesQuery->whereIn('course_id', $courseIds)->where(function ($query) use ($batchIds) {
                 $query->whereNull('batch_id')->orWhereIn('batch_id', $batchIds);
             });
@@ -60,7 +60,15 @@ class VideoLearningController extends Controller
             ->limit(30)->get();
 
         if ($isStudent) {
-            $recordings = $recordings->filter(fn ($recording) => in_array($recording->liveClass?->course_id, $this->studentCourseIds()));
+            $studentBatchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
+            $recordings = $recordings->filter(function ($recording) use ($studentBatchIds) {
+                return in_array($recording->liveClass?->course_id, $this->studentCourseIds())
+                    && (!$recording->liveClass?->batch_id || in_array($recording->liveClass->batch_id, $studentBatchIds));
+            });
+        } elseif ($user->isFaculty()) {
+            $recordings = $recordings->filter(fn ($recording) => $recording->liveClass?->faculty_id === $user->id);
+        } elseif (!$user->isSuperAdmin()) {
+            $recordings = $recordings->filter(fn ($recording) => $recording->liveClass?->branch_id === $user->branch_id);
         }
 
         $courses = Course::where('status', 'active')->orderBy('name')->get();
@@ -84,6 +92,11 @@ class VideoLearningController extends Controller
             'description' => 'nullable|string|max:5000',
         ]);
 
+        if (!auth()->user()->isSuperAdmin()) {
+            $data['branch_id'] = auth()->user()->branch_id;
+        }
+        abort_unless($data['branch_id'], 422, 'A branch must be assigned before creating a video course.');
+
         $data['is_published'] = $request->boolean('is_published');
         VideoCourse::create($data);
 
@@ -93,6 +106,10 @@ class VideoLearningController extends Controller
     public function storeLesson(Request $request, VideoCourse $videoCourse)
     {
         abort_unless($this->canManage(), 403);
+
+        if (!auth()->user()->isSuperAdmin() && $videoCourse->branch_id !== auth()->user()->branch_id) {
+            abort(403);
+        }
 
         $data = $request->validate([
             'title' => 'required|string|max:191',
@@ -131,6 +148,13 @@ class VideoLearningController extends Controller
         }
 
         $branchId = $batch?->branch_id ?: auth()->user()->branch_id ?: Branch::query()->value('id');
+        if (!auth()->user()->isSuperAdmin()) {
+            abort_unless($branchId === auth()->user()->branch_id, 403);
+        }
+        $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id());
+        if ($batch && $facultyId !== auth()->id() && !$batch->faculty()->where('users.id', $facultyId)->exists() && $batch->primary_mentor_id !== $facultyId) {
+            return back()->withErrors(['faculty_id' => 'Selected faculty is not assigned to this batch.'])->withInput();
+        }
         if (!$branchId) {
             return back()->withErrors(['branch_id' => 'Create a branch before scheduling live classes.'])->withInput();
         }
@@ -141,7 +165,7 @@ class VideoLearningController extends Controller
             'course_id' => $data['course_id'],
             'batch_id' => $data['batch_id'] ?? null,
             'subject_id' => $data['subject_id'] ?? null,
-            'faculty_id' => auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id()),
+            'faculty_id' => $facultyId,
             'title' => $data['title'],
             'description' => $data['description'] ?? null,
             'scheduled_start_at' => $data['scheduled_start_at'],
@@ -224,6 +248,7 @@ class VideoLearningController extends Controller
             'liveClass' => $liveClass->load(['course', 'faculty']),
             'livekitUrl' => $liveKit->serverUrl(),
             'token' => $token,
+            'canPublish' => !$user->isStudent(),
         ]);
     }
 
@@ -356,6 +381,9 @@ class VideoLearningController extends Controller
                         $attendance->left_at = null;
                     } else {
                         $attendance->left_at = now();
+                        if ($attendance->joined_at) {
+                            $attendance->duration_seconds = max(0, $attendance->joined_at->diffInSeconds($attendance->left_at));
+                        }
                     }
                     $attendance->save();
                 }
