@@ -22,8 +22,8 @@ class VideoLearningModuleTest extends TestCase
             ->get('/video-learning')
             ->assertOk()
             ->assertSee('Video Learning Hub')
-            ->assertSee('Create video course')
-            ->assertSee('Schedule a live class');
+            ->assertSee('Create recorded video course')
+            ->assertSee('Schedule a Zoom live session');
     }
 
     public function test_student_can_open_learning_hub_but_cannot_manage_courses(): void
@@ -33,9 +33,9 @@ class VideoLearningModuleTest extends TestCase
         $this->actingAs($student)
             ->get('/video-learning')
             ->assertOk()
-            ->assertSee('Recorded courses')
-            ->assertDontSee('Create video course')
-            ->assertDontSee('Schedule a live class');
+            ->assertSee('Recorded video courses')
+            ->assertDontSee('Create recorded video course')
+            ->assertDontSee('Schedule a Zoom live session');
     }
 
     public function test_student_cannot_create_a_video_course(): void
@@ -59,6 +59,7 @@ class VideoLearningModuleTest extends TestCase
                 'branch_id' => $branch->id,
                 'title' => 'Video Learning Feature Test',
                 'description' => 'Created by the feature test.',
+                'price' => 499,
                 'is_published' => 1,
             ])
             ->assertRedirect();
@@ -67,6 +68,7 @@ class VideoLearningModuleTest extends TestCase
             'course_id' => $course->id,
             'branch_id' => $branch->id,
             'title' => 'Video Learning Feature Test',
+            'price' => 499,
             'is_published' => 1,
         ]);
     }
