@@ -17,7 +17,7 @@
         </div>
     </div>
 
-    @if(!$isStudent)
+    @if($canManage)
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <section class="xl:col-span-1 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <div class="flex items-center gap-2 mb-4"><span class="h-8 w-8 rounded-lg bg-indigo-50 text-brand-700 flex items-center justify-center"><i class="fa-solid fa-folder-plus"></i></span><div><h2 class="font-bold text-sm">Create video course</h2><p class="text-[10px] text-slate-400">Organize lessons under an ERP course</p></div></div>
@@ -70,7 +70,7 @@
                         <p class="text-xs text-slate-400 rounded-lg bg-slate-50 p-3">No published lessons yet.</p>
                         @endforelse
                     </div>
-                    @if(!$isStudent)
+                    @if($canManage)
                     <details class="mt-4 border-t border-slate-100 pt-3">
                         <summary class="cursor-pointer text-xs font-bold text-brand-700">＋ Add recorded lesson</summary>
                         <form method="POST" action="{{ route('video-learning.lessons.store', $videoCourse) }}" class="mt-3 space-y-2 text-xs">@csrf
@@ -93,14 +93,14 @@
 
     <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-            <div class="p-5 border-b border-slate-100 flex items-center justify-between"><div><h2 class="font-extrabold text-base text-slate-900">Live classroom</h2><p class="text-xs text-slate-500">Current and scheduled sessions</p></div><span class="rounded-full bg-rose-50 text-rose-700 px-2.5 py-1 text-[10px] font-bold">LIVE NOW</span></div>
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between"><div><h2 class="font-extrabold text-base text-slate-900">Live classroom</h2><p class="text-xs text-slate-500">Current and scheduled sessions</p></div><span class="rounded-full bg-rose-50 text-rose-700 px-2.5 py-1 text-[10px] font-bold">LIVE & SCHEDULED</span></div>
             <div class="divide-y divide-slate-100">
                 @forelse($liveClasses as $class)
                 <div class="p-4 flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0"><div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full {{ $class->status === 'live' ? 'bg-rose-500 animate-pulse' : 'bg-amber-400' }}"></span><span class="text-[10px] font-bold uppercase {{ $class->status === 'live' ? 'text-rose-600' : 'text-amber-600' }}">{{ $class->status }}</span></div><h3 class="font-bold text-sm text-slate-900 mt-1">{{ $class->title }}</h3><p class="text-[11px] text-slate-500">{{ $class->course->name ?? 'Course' }} · {{ $class->batch->name ?? 'All eligible students' }} · {{ $class->scheduled_start_at->format('d M, h:i A') }}</p></div>
                     @if($class->status === 'live')
                     <form method="POST" action="{{ route('video-learning.live-classes.join', $class) }}">@csrf<button class="rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 text-xs font-bold">Join classroom</button></form>
-                    @elseif(!$isStudent && $class->status === 'scheduled')
+                    @elseif($canManage && $class->status === 'scheduled')
                     <form method="POST" action="{{ route('video-learning.live-classes.start', $class) }}">@csrf<button class="rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 text-xs font-bold">Start & record</button></form>
                     @else
                     <span class="text-[10px] text-slate-400">{{ $class->scheduled_end_at->format('h:i A') }}</span>
