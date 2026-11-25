@@ -1,12 +1,12 @@
 <?php
 
-namespace App\\Http\\Controllers;
+namespace App\Http\Controllers;
 
-use App\\Models\\{Batch, Branch, Course, LiveClass, LiveClassAttendance, LiveRecording, VideoCourse, VideoLearningProgress, VideoLesson};
-use App\\Services\\LiveKitService;
-use Illuminate\\Http\\Request;
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Support\\Str;
+use App\Models\{Batch, Branch, Course, LiveClass, LiveClassAttendance, LiveRecording, VideoCourse, VideoLearningProgress, VideoLesson};
+use App\Services\LiveKitService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -77,7 +77,7 @@ class VideoLearningController extends Controller
         $courses = Course::where('status', 'active')->orderBy('name')->get();
         $batches = Batch::where('status', 'active')->with('course')->orderBy('name')->get();
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
-        $faculty = \\App\\Models\\User::where('user_type', 'faculty')->where('status', 'active')->orderBy('name')->get();
+        $faculty = \App\Models\User::where('user_type', 'faculty')->where('status', 'active')->orderBy('name')->get();
 
         return view('video-learning.index', compact(
             'videoCourses', 'liveClasses', 'recordings', 'courses', 'batches', 'branches', 'faculty', 'isStudent', 'canManage'
@@ -155,7 +155,7 @@ class VideoLearningController extends Controller
             abort_unless($branchId === auth()->user()->branch_id, 403);
         }
         $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id());
-        $facultyMember = \\App\\Models\\User::whereKey($facultyId)->where('user_type', 'faculty')->where('status', 'active')->first();
+        $facultyMember = \App\Models\User::whereKey($facultyId)->where('user_type', 'faculty')->where('status', 'active')->first();
         if (!$facultyMember || (int) $facultyMember->branch_id !== (int) $branchId) {
             return back()->withErrors(['faculty_id' => 'Select an active faculty member from the class branch.'])->withInput();
         }
