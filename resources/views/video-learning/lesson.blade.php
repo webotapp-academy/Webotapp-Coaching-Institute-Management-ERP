@@ -54,7 +54,7 @@
         message.textContent = done ? 'Lesson marked as completed.' : 'Progress saved.';\n        lastSaved = watched;
     }
     if (video) {
-        video.addEventListener('timeupdate', () => {\n            watched = Math.floor(video.currentTime);\n            if (watched - lastSaved >= 15) save(false).catch(() => {});\n        });
+        video.addEventListener('timeupdate', () => {\n            watched = Math.floor(video.currentTime);\n            if (watched - lastSaved >= 15) { lastSaved = watched; save(false).catch(() => {}); }\n        });
         video.addEventListener('pause', () => save(false).catch(() => {}));
         video.addEventListener('ended', () => save(true).catch(() => {}));
     }
