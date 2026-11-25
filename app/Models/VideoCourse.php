@@ -8,6 +8,8 @@ class VideoCourse extends Model
 {
     protected $guarded = ['id'];
 
+    protected $casts = ['price' => 'decimal:2'];
+
     public function course()
     {
         return $this->belongsTo(Course::class);
