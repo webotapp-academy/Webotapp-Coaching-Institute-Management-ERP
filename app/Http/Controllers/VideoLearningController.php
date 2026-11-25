@@ -159,7 +159,7 @@ class VideoLearningController extends Controller
         if (!$facultyMember || (int) $facultyMember->branch_id !== (int) $branchId) {
             return back()->withErrors(['faculty_id' => 'Select an active faculty member from the class branch.'])->withInput();
         }
-        if ($batch && $facultyId !== auth()->id() && !$batch->faculty()->where('users.id', $facultyId)->exists() && $batch->primary_mentor_id !== $facultyId) {
+        if ($batch && !$batch->faculty()->where('users.id', $facultyId)->exists() && $batch->primary_mentor_id !== $facultyId) {
             return back()->withErrors(['faculty_id' => 'Selected faculty is not assigned to this batch.'])->withInput();
         }
         if (!$branchId) {
@@ -269,16 +269,17 @@ class VideoLearningController extends Controller
         }
 
         $url = $lesson->source_url;
+        abort_if(blank($url), 404, 'This lesson does not have a video source yet.');
         $embedUrl = null;
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
-        if (str_contains($host, 'youtu.be')) {
+        if ($host === 'youtu.be') {
             $embedUrl = 'https://www.youtube-nocookie.com/embed/' . trim(parse_url($url, PHP_URL_PATH) ?: '', '/');
-        } elseif (str_contains($host, 'youtube.com')) {
+        } elseif (in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com'], true)) {
             parse_str(parse_url($url, PHP_URL_QUERY) ?: '', $query);
             if (!empty($query['v'])) {
                 $embedUrl = 'https://www.youtube-nocookie.com/embed/' . $query['v'];
             }
-        } elseif (str_contains($host, 'vimeo.com')) {
+        } elseif (in_array($host, ['vimeo.com', 'www.vimeo.com', 'player.vimeo.com'], true)) {
             $id = trim(parse_url($url, PHP_URL_PATH) ?: '', '/');
             if ($id !== '') {
                 $embedUrl = 'https://player.vimeo.com/video/' . $id;
