@@ -57,23 +57,21 @@ class VideoLearningController extends Controller
 
         $videoCourses = $coursesQuery->latest()->get();
         $liveClasses = $classesQuery->get();
-        $recordings = LiveRecording::with('liveClass.course')
-            ->where('status', 'ready')
-            ->latest('completed_at')
-            ->limit(30)->get();
-
+        $recordingsQuery = LiveRecording::with('liveClass.course')->where('status', 'ready');
         if ($isStudent) {
             $studentBatchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
             $courseIds = $this->studentCourseIds();
-            $recordings = $recordings->filter(function ($recording) use ($studentBatchIds, $courseIds) {
-                return in_array($recording->liveClass?->course_id, $courseIds)
-                    && (!$recording->liveClass?->batch_id || in_array($recording->liveClass->batch_id, $studentBatchIds));
+            $recordingsQuery->whereHas('liveClass', function ($query) use ($studentBatchIds, $courseIds) {
+                $query->whereIn('course_id', $courseIds)->where(function ($batchQuery) use ($studentBatchIds) {
+                    $batchQuery->whereNull('batch_id')->orWhereIn('batch_id', $studentBatchIds);
+                });
             });
         } elseif ($user->isFaculty()) {
-            $recordings = $recordings->filter(fn ($recording) => $recording->liveClass?->faculty_id === $user->id);
+            $recordingsQuery->whereHas('liveClass', fn ($query) => $query->where('faculty_id', $user->id));
         } elseif (!$user->isSuperAdmin()) {
-            $recordings = $recordings->filter(fn ($recording) => $recording->liveClass?->branch_id === $user->branch_id);
+            $recordingsQuery->whereHas('liveClass', fn ($query) => $query->where('branch_id', $user->branch_id));
         }
+        $recordings = $recordingsQuery->latest('completed_at')->limit(30)->get();
 
         $courses = Course::where('status', 'active')->orderBy('name')->get();
         $batches = Batch::where('status', 'active')->with('course')->orderBy('name')->get();
