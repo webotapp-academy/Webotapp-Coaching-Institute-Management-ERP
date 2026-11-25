@@ -23,7 +23,7 @@ class VideoLearningController extends Controller
     {
         $student = auth()->user()->student;
 
-        return $student ? $student->batches()->wherePivot('status', 'active')->pluck('courses.id')->unique()->all() : [];
+        return $student ? $student->batches()->wherePivot('status', 'active')->pluck('course_id')->unique()->all() : [];
     }
 
     public function index(Request $request)
@@ -42,6 +42,7 @@ class VideoLearningController extends Controller
             $coursesQuery->whereIn('course_id', $courseIds);
             $classesQuery->whereIn('course_id', $courseIds);
         } elseif ($user->isFaculty()) {
+            $coursesQuery->where('branch_id', $user->branch_id);
             $classesQuery->where('faculty_id', $user->id);
         } elseif (!$user->isSuperAdmin()) {
             $coursesQuery->where('branch_id', $user->branch_id);
