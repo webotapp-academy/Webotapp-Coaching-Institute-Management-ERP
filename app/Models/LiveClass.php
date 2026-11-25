@@ -11,7 +11,7 @@ class LiveClass extends Model
     protected $casts = [
         'scheduled_start_at' => 'datetime',
         'scheduled_end_at' => 'datetime',
-        'recording_enabled' => 'boolean',
+        'price' => 'decimal:2',
     ];
 
     public function course()
