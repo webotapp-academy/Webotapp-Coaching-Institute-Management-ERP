@@ -11,6 +11,11 @@
         <span class="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700"><span class="h-2 w-2 rounded-full bg-rose-500 animate-pulse"></span> LIVE · Recording enabled</span>
     </div>
 
+    <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        <strong><i class="fa-solid fa-record-vinyl mr-1"></i> Recording notice:</strong>
+        This live class is automatically recorded for enrolled students to replay later. By joining, participants acknowledge that audio, video and shared classroom content may be recorded.
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
         <div class="bg-slate-950 rounded-2xl p-3 sm:p-4">
             <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-[420px]">
