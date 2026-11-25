@@ -94,6 +94,10 @@ class LiveKitService
             ]],
         ], ['roomRecord' => true]);
 
+        if (empty($result['egress_id'])) {
+            throw new RuntimeException('LiveKit did not return an egress ID for the recording job.');
+        }
+
         return array_merge($result, ['recording_path' => $path]);
     }
 
@@ -118,26 +122,44 @@ class LiveKitService
             return false;
         }
 
-        $token = preg_replace('/^Bearer\\s+/i', '', trim($authorization));
+        $token = preg_replace('/^Bearer\s+/i', '', trim($authorization));
         $parts = explode('.', $token);
         if (count($parts) !== 3) {
             return false;
         }
 
-        [$header, $payload, $signature] = $parts;
-        $unsigned = $header . '.' . $payload;
+        [$headerPart, $payloadPart, $signature] = $parts;
+        $unsigned = $headerPart . '.' . $payloadPart;
         $expected = rtrim(strtr(base64_encode(hash_hmac('sha256', $unsigned, config('services.livekit.api_secret'), true)), '+/', '-_'), '=');
         if (!hash_equals($expected, $signature)) {
             return false;
         }
 
-        $decode = function (string $value) {
-            $decoded = base64_decode(strtr($value, '-_', '+/'));
-            return $decoded === false ? null : json_decode($decoded, true);
+        $decode = function (string $value): ?array {
+            $value = strtr($value, '-_', '+/');
+            $value .= str_repeat('=', (4 - strlen($value) % 4) % 4);
+            $decoded = base64_decode($value, true);
+            if ($decoded === false) {
+                return null;
+            }
+
+            $json = json_decode($decoded, true);
+            return is_array($json) ? $json : null;
         };
 
-        $claims = $decode($payload);
-        if (!is_array($claims) || ($claims['iss'] ?? null) !== config('services.livekit.api_key') || empty($claims['sha256'])) {
+        $header = $decode($headerPart);
+        $claims = $decode($payloadPart);
+        $now = time();
+
+        if (
+            !is_array($header)
+            || ($header['alg'] ?? null) !== 'HS256'
+            || !is_array($claims)
+            || ($claims['iss'] ?? null) !== config('services.livekit.api_key')
+            || empty($claims['sha256'])
+            || (isset($claims['nbf']) && (int) $claims['nbf'] > $now)
+            || (isset($claims['exp']) && (int) $claims['exp'] < $now)
+        ) {
             return false;
         }
 
