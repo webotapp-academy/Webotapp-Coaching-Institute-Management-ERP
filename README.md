@@ -118,7 +118,7 @@ http://127.0.0.1:8000
 
 ## 7. Video Learning: Zoom Live Sessions + Google Drive Courses
 
-The \`feature/video-learning-live-classes\` branch adds a Video Learning Hub at \`/video-learning\`.
+The `feature/video-learning-live-classes` branch adds a Video Learning Hub at `/video-learning`.
 
 ### Live sessions (Zoom invitation links)
 - Admin / Branch Manager / Faculty schedules a live session in Webotapp.
@@ -148,18 +148,18 @@ For embedded playback, set the video file's Google Drive **General access** to *
 ### Run locally
 After cloning this branch:
 
-\`\`\`bash
+```bash
 composer install
 cp .env.example .env
 php artisan key:generate
-\`\`\`
+```
 
 Configure your database and run:
 
-\`\`\`bash
+```bash
 php artisan migrate --seed
 php artisan optimize:clear
 php artisan serve
-\`\`\`
+```
 
-Sign in and open \`http://127.0.0.1:8000/video-learning\`. Admin / Branch Manager / Faculty can create recorded courses and schedule Zoom sessions. Students see the courses and sessions available to their branch / enrolled course / batch.
+Sign in and open `http://127.0.0.1:8000/video-learning`. Admin / Branch Manager / Faculty can create recorded courses and schedule Zoom sessions. Students see the courses and sessions available to their branch / enrolled course / batch.
