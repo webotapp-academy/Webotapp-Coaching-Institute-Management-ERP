@@ -241,11 +241,6 @@ class VideoLearningController extends Controller
         }
 
         $identity = (string) $user->id;
-        LiveClassAttendance::updateOrCreate(
-            ['live_class_id' => $liveClass->id, 'participant_identity' => $identity],
-            ['user_id' => $user->id, 'joined_at' => now(), 'left_at' => null]
-        );
-
         $token = $liveKit->createJoinToken(
             $liveClass->provider_room_name,
             $identity,
