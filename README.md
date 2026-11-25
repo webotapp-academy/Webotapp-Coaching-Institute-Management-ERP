@@ -104,12 +104,9 @@ All 17 integration and workflow feature tests pass with 61 assertions covering r
 
 ---
 
-## 6. Local Server Running
-The local application server is active on:
-```
-http://127.0.0.1:8000
-```
-- Direct access: `http://127.0.0.1:8000/login`
+## 6. Local Development URL
+After you install dependencies, configure the database, run migrations and start `php artisan serve`, open:
+- Login: `http://127.0.0.1:8000/login`
 - Sample Certificate Verification: `http://127.0.0.1:8000/verify-certificate/VERIF-PVQUKXJXJKBP`
 
 
