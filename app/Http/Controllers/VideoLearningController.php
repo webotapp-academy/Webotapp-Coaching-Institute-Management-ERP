@@ -62,7 +62,7 @@ class VideoLearningController extends Controller
         if ($isStudent) {
             $studentBatchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
             $courseIds = $this->studentCourseIds();
-            $recordingsQuery->whereHas('liveClass', function ($query) use ($studentBatchIds, $courseIds) {
+            $recordingsQuery->whereHas('liveClass', function ($query) use ($studentBatchIds, $courseIds, $user) {
                 $query->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds)->where(function ($batchQuery) use ($studentBatchIds) {
                     $batchQuery->whereNull('batch_id')->orWhereIn('batch_id', $studentBatchIds);
                 });
