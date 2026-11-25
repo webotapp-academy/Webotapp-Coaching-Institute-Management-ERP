@@ -118,7 +118,7 @@
                 @forelse($recordings as $recording)
                 <div class="p-4 flex items-center justify-between gap-3">
                     <div class="min-w-0"><h3 class="font-bold text-sm text-slate-800">{{ $recording->liveClass->title ?? 'Live class recording' }}</h3><p class="text-[11px] text-slate-500">{{ $recording->liveClass->course->name ?? 'Course' }} · {{ $recording->completed_at?->format('d M Y') }}</p></div>
-                    @if($recording->playback_url)<a href="{{ $recording->playback_url }}" target="_blank" rel="noopener" class="rounded-lg bg-slate-100 hover:bg-brand-50 text-brand-700 px-3 py-2 text-xs font-bold">Watch replay</a>@else<span class="text-[10px] text-slate-400">{{ ucfirst($recording->status) }}</span>@endif
+                    @if($recording->status === 'ready')<a href="{{ route('video-learning.recordings.play', $recording) }}" class="rounded-lg bg-slate-100 hover:bg-brand-50 text-brand-700 px-3 py-2 text-xs font-bold">Watch replay</a>@else<span class="text-[10px] text-slate-400">{{ ucfirst($recording->status) }}</span>@endif
                 </div>
                 @empty
                 <div class="p-8 text-center text-xs text-slate-400">No processed recordings yet. Recordings will appear after the LiveKit egress-completed event is received.</div>
