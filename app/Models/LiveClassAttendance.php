@@ -6,6 +6,8 @@ use Illuminate\\Database\\Eloquent\\Model;
 
 class LiveClassAttendance extends Model
 {
+    protected $table = 'live_class_attendance';
+
     protected $guarded = ['id'];
 
     protected $casts = [
