@@ -9,6 +9,7 @@ use App\Http\Controllers\{
 };
 
 // Public Routes
+Route::post('/webhooks/livekit', [VideoLearningController::class, 'webhook'])->name('webhooks.livekit');
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/quick-login/{type}', [AuthController::class, 'quickLogin'])->name('quick-login');
