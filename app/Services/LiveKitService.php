@@ -42,7 +42,10 @@ class LiveKitService
 
     private function post(string $service, string $method, array $payload, array $grant)
     {
-        $url = rtrim(config('services.livekit.url'), '/') . '/twirp/livekit.' . $service . '/' . $method;
+        $baseUrl = rtrim((string) config('services.livekit.url'), '/');
+        $baseUrl = preg_replace('~^wss://~i', 'https://', $baseUrl);
+        $baseUrl = preg_replace('~^ws://~i', 'http://', $baseUrl);
+        $url = $baseUrl . '/twirp/livekit.' . $service . '/' . $method;
 
         return Http::asJson()
             ->withToken($this->jwt(['video' => $grant]))
@@ -73,19 +76,21 @@ class LiveKitService
         }
 
         $path = 'class-recordings/' . $roomName . '/' . Str::uuid() . '.mp4';
-        $result = $this->post('Egress', 'StartRoomCompositeEgress', [
+        $result = $this->post('Egress', 'StartEgress', [
             'room_name' => $roomName,
-            'layout' => 'grid',
-            'file_outputs' => [[
-                'filepath' => $path,
-                's3' => array_filter([
-                    'access_key' => $accessKey,
-                    'secret' => $secretKey,
-                    'region' => $region,
-                    'bucket' => $bucket,
-                    'endpoint' => config('services.livekit.recording_endpoint'),
-                    'force_path_style' => config('services.livekit.recording_force_path_style') ? true : null,
-                ], fn ($value) => $value !== null && $value !== ''),
+            'template' => ['layout' => 'grid'],
+            'outputs' => [[
+                'file' => ['filepath' => $path, 'file_type' => 1],
+                'storage' => [
+                    's3' => array_filter([
+                        'access_key' => $accessKey,
+                        'secret' => $secretKey,
+                        'region' => $region,
+                        'bucket' => $bucket,
+                        'endpoint' => config('services.livekit.recording_endpoint'),
+                        'force_path_style' => config('services.livekit.recording_force_path_style') ? true : null,
+                    ], fn ($value) => $value !== null && $value !== ''),
+                ],
             ]],
         ], ['roomRecord' => true]);
 
