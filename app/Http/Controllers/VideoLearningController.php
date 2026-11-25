@@ -183,7 +183,7 @@ class VideoLearningController extends Controller
             return back()->withErrors(['livekit' => 'Could not start room and recording. Check LiveKit and storage configuration, then retry.']);
         }
 
-        return redirect()->route('video-learning.classroom', $liveClass)->with('success', 'Live room and automatic recording started.');
+        return $this->join($liveClass, $liveKit);
     }
 
     public function join(LiveClass $liveClass, LiveKitService $liveKit)
@@ -193,6 +193,10 @@ class VideoLearningController extends Controller
 
         if ($user->isStudent()) {
             abort_unless(in_array($liveClass->course_id, $this->studentCourseIds()), 403);
+            if ($liveClass->batch_id) {
+                $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
+                abort_unless(in_array($liveClass->batch_id, $batchIds), 403);
+            }
         } elseif ($user->isFaculty()) {
             abort_unless($liveClass->faculty_id === $user->id, 403);
         } elseif (!$user->isSuperAdmin() && !$user->isBranchManager()) {
@@ -222,4 +226,143 @@ class VideoLearningController extends Controller
             'token' => $token,
         ]);
     }
+
+
+    public function showLesson(VideoLesson $lesson)
+    {
+        abort_unless($lesson->is_published || $this->canManage(), 404);
+        $lesson->load('videoCourse.course');
+
+        if (auth()->user()->isStudent()) {
+            abort_unless(in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
+        } elseif (!$this->canManage() && $lesson->videoCourse->branch_id !== auth()->user()->branch_id) {
+            abort(403);
+        }
+
+        $url = $lesson->source_url;
+        $embedUrl = null;
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
+        if (str_contains($host, 'youtu.be')) {
+            $embedUrl = 'https://www.youtube-nocookie.com/embed/' . trim(parse_url($url, PHP_URL_PATH) ?: '', '/');
+        } elseif (str_contains($host, 'youtube.com')) {
+            parse_str(parse_url($url, PHP_URL_QUERY) ?: '', $query);
+            if (!empty($query['v'])) {
+                $embedUrl = 'https://www.youtube-nocookie.com/embed/' . $query['v'];
+            }
+        } elseif (str_contains($host, 'vimeo.com')) {
+            $id = trim(parse_url($url, PHP_URL_PATH) ?: '', '/');
+            if ($id !== '') {
+                $embedUrl = 'https://player.vimeo.com/video/' . $id;
+            }
+        }
+
+        $progress = VideoLearningProgress::firstOrNew([
+            'video_lesson_id' => $lesson->id,
+            'user_id' => auth()->id(),
+        ]);
+
+        return view('video-learning.lesson', compact('lesson', 'embedUrl', 'progress'));
+    }
+
+    public function saveProgress(Request $request, VideoLesson $lesson)
+    {
+        abort_unless($lesson->is_published || $this->canManage(), 404);
+        if (auth()->user()->isStudent()) {
+            abort_unless(in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
+        }
+
+        $data = $request->validate([
+            'watched_seconds' => 'required|integer|min:0|max:86400',
+            'completed' => 'sometimes|boolean',
+        ]);
+
+        VideoLearningProgress::updateOrCreate(
+            ['video_lesson_id' => $lesson->id, 'user_id' => auth()->id()],
+            [
+                'watched_seconds' => $data['watched_seconds'],
+                'completed' => (bool) ($data['completed'] ?? false),
+                'last_watched_at' => now(),
+            ]
+        );
+
+        return response()->json(['saved' => true]);
+    }
+
+    public function playRecording(LiveRecording $recording)
+    {
+        $recording->load('liveClass');
+        $user = auth()->user();
+
+        if ($user->isStudent()) {
+            abort_unless(in_array($recording->liveClass->course_id, $this->studentCourseIds()), 403);
+            if ($recording->liveClass->batch_id) {
+                $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
+                abort_unless(in_array($recording->liveClass->batch_id, $batchIds), 403);
+            }
+        } elseif ($user->isFaculty()) {
+            abort_unless($recording->liveClass->faculty_id === $user->id, 403);
+        } elseif (!$user->isSuperAdmin() && !$user->isBranchManager()) {
+            abort(403);
+        }
+
+        abort_unless($recording->status === 'ready' && $recording->storage_key, 404);
+        $url = \Illuminate\Support\Facades\Storage::disk($recording->storage_disk ?: 's3')
+            ->temporaryUrl($recording->storage_key, now()->addMinutes(15));
+
+        return redirect()->away($url);
+    }
+
+    public function webhook(Request $request, LiveKitService $liveKit)
+    {
+        $rawBody = $request->getContent();
+        abort_unless($liveKit->verifyWebhook($rawBody, $request->header('Authorization')), 401, 'Invalid LiveKit webhook signature.');
+
+        $event = json_decode($rawBody, true) ?: [];
+        $eventName = $event['event'] ?? '';
+        $roomName = data_get($event, 'room.name');
+
+        if ($eventName === 'egress_ended') {
+            $egress = $event['egressInfo'] ?? $event['egress_info'] ?? [];
+            $egressId = $egress['egressId'] ?? $egress['egress_id'] ?? null;
+            $status = $egress['status'] ?? null;
+            $recording = $egressId
+                ? LiveRecording::where('provider_egress_id', $egressId)->first()
+                : null;
+
+            if ($recording) {
+                $completed = in_array($status, [3, '3', 'EGRESS_COMPLETE'], true);
+                $recording->update([
+                    'status' => $completed ? 'ready' : 'failed',
+                    'completed_at' => now(),
+                    'duration_seconds' => (int) round((data_get($egress, 'fileResults.0.duration') ?? data_get($egress, 'file_results.0.duration') ?? 0) / 1000000000),
+                    'failure_reason' => $completed ? null : ($egress['error'] ?? 'LiveKit recording did not complete successfully.'),
+                ]);
+            }
+        } elseif ($eventName === 'room_finished' && $roomName) {
+            LiveClass::where('provider_room_name', $roomName)->update(['status' => 'completed']);
+        } elseif (in_array($eventName, ['participant_joined', 'participant_left'], true)) {
+            $participant = $event['participant'] ?? [];
+            $identity = $participant['identity'] ?? null;
+            if ($roomName && $identity && ctype_digit((string) $identity)) {
+                $class = LiveClass::where('provider_room_name', $roomName)->first();
+                if ($class) {
+                    $attendance = LiveClassAttendance::firstOrNew([
+                        'live_class_id' => $class->id,
+                        'participant_identity' => (string) $identity,
+                    ]);
+                    $attendance->user_id = (int) $identity;
+                    if ($eventName === 'participant_joined') {
+                        $attendance->joined_at = now();
+                        $attendance->left_at = null;
+                    } else {
+                        $attendance->left_at = now();
+                    }
+                    $attendance->save();
+                }
+            }
+        }
+
+        return response()->json(['received' => true]);
+    }
+
 }
