@@ -78,12 +78,14 @@ class LiveKitService
             'layout' => 'grid',
             'file_outputs' => [[
                 'filepath' => $path,
-                's3' => [
+                's3' => array_filter([
                     'access_key' => $accessKey,
                     'secret' => $secretKey,
                     'region' => $region,
                     'bucket' => $bucket,
-                ],
+                    'endpoint' => config('services.livekit.recording_endpoint'),
+                    'force_path_style' => config('services.livekit.recording_force_path_style') ? true : null,
+                ], fn ($value) => $value !== null && $value !== ''),
             ]],
         ], ['roomRecord' => true]);
 
