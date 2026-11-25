@@ -181,7 +181,7 @@ class VideoLearningController extends Controller
     public function start(LiveClass $liveClass, LiveKitService $liveKit)
     {
         abort_unless($this->canManage(), 403);
-        abort_unless(auth()->user()->isSuperAdmin() || auth()->user()->isBranchManager() || $liveClass->faculty_id === auth()->id(), 403);
+        abort_unless(auth()->user()->isSuperAdmin() || (auth()->user()->isBranchManager() && $liveClass->branch_id === auth()->user()->branch_id) || (auth()->user()->isFaculty() && $liveClass->faculty_id === auth()->id()), 403);
         abort_if($liveClass->status === 'live', 409, 'This class is already live.');
 
         if (!$liveKit->isConfigured()) {
@@ -223,7 +223,9 @@ class VideoLearningController extends Controller
             }
         } elseif ($user->isFaculty()) {
             abort_unless($liveClass->faculty_id === $user->id, 403);
-        } elseif (!$user->isSuperAdmin() && !$user->isBranchManager()) {
+        } elseif ($user->isBranchManager()) {
+            abort_unless($liveClass->branch_id === $user->branch_id, 403);
+        } elseif (!$user->isSuperAdmin()) {
             abort(403);
         }
 
@@ -260,7 +262,7 @@ class VideoLearningController extends Controller
 
         if (auth()->user()->isStudent()) {
             abort_unless(in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
-        } elseif (!$this->canManage() && $lesson->videoCourse->branch_id !== auth()->user()->branch_id) {
+        } elseif (!auth()->user()->isSuperAdmin() && $lesson->videoCourse->branch_id !== auth()->user()->branch_id) {
             abort(403);
         }
 
@@ -326,7 +328,9 @@ class VideoLearningController extends Controller
             }
         } elseif ($user->isFaculty()) {
             abort_unless($recording->liveClass->faculty_id === $user->id, 403);
-        } elseif (!$user->isSuperAdmin() && !$user->isBranchManager()) {
+        } elseif ($user->isBranchManager()) {
+            abort_unless($recording->liveClass->branch_id === $user->branch_id, 403);
+        } elseif (!$user->isSuperAdmin()) {
             abort(403);
         }
 
