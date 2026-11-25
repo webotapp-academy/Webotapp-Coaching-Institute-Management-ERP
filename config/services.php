@@ -22,6 +22,7 @@ return [
         'recording_access_key' => env('LIVEKIT_RECORDING_ACCESS_KEY', env('AWS_ACCESS_KEY_ID')),
         'recording_secret_key' => env('LIVEKIT_RECORDING_SECRET_KEY', env('AWS_SECRET_ACCESS_KEY')),
         'recording_region' => env('LIVEKIT_RECORDING_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
-        'recording_endpoint' => env('LIVEKIT_RECORDING_ENDPOINT', env('AWS_ENDPOINT')),\n        'recording_force_path_style' => env('LIVEKIT_RECORDING_FORCE_PATH_STYLE', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
+        'recording_endpoint' => env('LIVEKIT_RECORDING_ENDPOINT', env('AWS_ENDPOINT')),
+        'recording_force_path_style' => env('LIVEKIT_RECORDING_FORCE_PATH_STYLE', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
     ],
 ];
