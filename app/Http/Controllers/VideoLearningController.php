@@ -30,8 +30,11 @@ class VideoLearningController extends Controller
     {
         $user = auth()->user();
         $isStudent = $user->isStudent();
-        $coursesQuery = VideoCourse::with(['course', 'lessons' => function ($query) {
-            $query->where('is_published', true)->orderBy('sort_order');
+        $coursesQuery = VideoCourse::with(['course', 'lessons' => function ($query) use ($isStudent) {
+            if ($isStudent) {
+                $query->where('is_published', true);
+            }
+            $query->orderBy('sort_order');
         }]);
 
         $classesQuery = LiveClass::with(['course', 'batch', 'faculty', 'recordings'])
@@ -61,8 +64,9 @@ class VideoLearningController extends Controller
 
         if ($isStudent) {
             $studentBatchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
-            $recordings = $recordings->filter(function ($recording) use ($studentBatchIds) {
-                return in_array($recording->liveClass?->course_id, $this->studentCourseIds())
+            $courseIds = $this->studentCourseIds();
+            $recordings = $recordings->filter(function ($recording) use ($studentBatchIds, $courseIds) {
+                return in_array($recording->liveClass?->course_id, $courseIds)
                     && (!$recording->liveClass?->batch_id || in_array($recording->liveClass->batch_id, $studentBatchIds));
             });
         } elseif ($user->isFaculty()) {
@@ -135,7 +139,7 @@ class VideoLearningController extends Controller
             'course_id' => 'required|exists:courses,id',
             'batch_id' => 'nullable|exists:batches,id',
             'subject_id' => 'nullable|exists:subjects,id',
-            'faculty_id' => 'nullable|exists:users,id',
+            'faculty_id' => auth()->user()->isFaculty() ? 'nullable' : 'required|exists:users,id',
             'title' => 'required|string|max:191',
             'description' => 'nullable|string|max:3000',
             'scheduled_start_at' => 'required|date|after:now',
@@ -294,8 +298,11 @@ class VideoLearningController extends Controller
     public function saveProgress(Request $request, VideoLesson $lesson)
     {
         abort_unless($lesson->is_published || $this->canManage(), 404);
+        $lesson->loadMissing('videoCourse');
         if (auth()->user()->isStudent()) {
             abort_unless(in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
+        } elseif (!auth()->user()->isSuperAdmin()) {
+            abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id, 403);
         }
 
         $data = $request->validate([
