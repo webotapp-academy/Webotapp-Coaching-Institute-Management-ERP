@@ -40,7 +40,7 @@
     const status = document.getElementById('progress-status');
     const bar = document.getElementById('progress-bar');
     const message = document.getElementById('progress-message');
-    let watched = {{ (int) $progress->watched_seconds }};
+    let watched = {{ (int) $progress->watched_seconds }};\n    let lastSaved = watched;
     async function save(done) {
         if (video && Number.isFinite(video.currentTime)) watched = Math.floor(video.currentTime);
         const response = await fetch(@json(route('video-learning.progress', $lesson)), {
@@ -51,10 +51,10 @@
         if (!response.ok) throw new Error('Progress could not be saved');
         status.textContent = done ? 'Completed' : 'In progress';
         bar.style.width = done ? '100%' : '0%';
-        message.textContent = done ? 'Lesson marked as completed.' : 'Progress saved.';
+        message.textContent = done ? 'Lesson marked as completed.' : 'Progress saved.';\n        lastSaved = watched;
     }
     if (video) {
-        video.addEventListener('timeupdate', () => { watched = Math.floor(video.currentTime); });
+        video.addEventListener('timeupdate', () => {\n            watched = Math.floor(video.currentTime);\n            if (watched - lastSaved >= 15) save(false).catch(() => {});\n        });
         video.addEventListener('pause', () => save(false).catch(() => {}));
         video.addEventListener('ended', () => save(true).catch(() => {}));
     }
