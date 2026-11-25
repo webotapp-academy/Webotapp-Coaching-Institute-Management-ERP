@@ -134,6 +134,9 @@ The `feature/video-learning-live-classes` branch adds a Video Learning Hub at `/
 - Faculty can also add a Google Drive replay link to a past Zoom live session.
 - Lesson completion is marked by the student because an embedded Google Drive player does not expose playback progress to the Webotapp application.
 
+
+**Pricing implementation note:** The recorded-course and live-session prices are stored and displayed separately. This branch does not yet include checkout, payment collection, payment verification, or paid-access locking. Complete those workflows before using the displayed prices to sell content; until then, links are visible to eligible enrolled students.
+
 ### Google Drive sharing checklist
 For embedded playback, set the video file's Google Drive **General access** to **Anyone with the link — Viewer**, unless you individually share it with every student who needs access. A file set to Restricted will not play for students who do not have permission.
 
