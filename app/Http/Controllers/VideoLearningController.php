@@ -2,13 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Batch, Branch, Course, LiveClass, LiveClassAttendance, LiveRecording, VideoCourse, VideoLearningProgress, VideoLesson};
-use App\Services\LiveKitService;
+use App\Models\{Batch, Branch, Course, LiveClass, LiveRecording, VideoCourse, VideoLearningProgress, VideoLesson};
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
-use Throwable;
 
 class VideoLearningController extends Controller
 {
@@ -23,7 +19,86 @@ class VideoLearningController extends Controller
     {
         $student = auth()->user()->student;
 
-        return $student ? $student->batches()->wherePivot('status', 'active')->pluck('course_id')->unique()->all() : [];
+        return $student
+            ? $student->batches()->wherePivot('status', 'active')->pluck('course_id')->unique()->all()
+            : [];
+    }
+
+    private function isGoogleDriveUrl(string $url): bool
+    {
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
+
+        return $host === 'drive.google.com' || $host === 'docs.google.com';
+    }
+
+    private function googleDriveFileId(string $url): ?string
+    {
+        if (preg_match('~/file/d/([a-zA-Z0-9_-]+)~', $url, $matches)) {
+            return $matches[1];
+        }
+
+        parse_str(parse_url($url, PHP_URL_QUERY) ?: '', $query);
+
+        return isset($query['id']) && preg_match('/^[a-zA-Z0-9_-]+$/', $query['id'])
+            ? $query['id']
+            : null;
+    }
+
+    private function canAccessLiveClass(LiveClass $liveClass): bool
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        if ($user->isBranchManager()) {
+            return (int) $liveClass->branch_id === (int) $user->branch_id;
+        }
+
+        if ($user->isFaculty()) {
+            return (int) $liveClass->faculty_id === (int) $user->id;
+        }
+
+        if (!$user->isStudent() || (int) $liveClass->branch_id !== (int) $user->branch_id) {
+            return false;
+        }
+
+        if (!in_array($liveClass->course_id, $this->studentCourseIds())) {
+            return false;
+        }
+
+        if ($liveClass->batch_id) {
+            $batchIds = $user->student?->batches()
+                ->wherePivot('status', 'active')
+                ->pluck('batches.id')
+                ->all() ?? [];
+
+            return in_array($liveClass->batch_id, $batchIds);
+        }
+
+        return true;
+    }
+
+    private function canAccessVideoCourse(VideoCourse $videoCourse): bool
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        if ((int) $videoCourse->branch_id !== (int) $user->branch_id) {
+            return false;
+        }
+
+        if ($user->isBranchManager() || $user->isFaculty()) {
+            return true;
+        }
+
+        return $user->isStudent()
+            && $videoCourse->is_published
+            && in_array($videoCourse->course_id, $this->studentCourseIds());
     }
 
     public function index(Request $request)
@@ -31,6 +106,7 @@ class VideoLearningController extends Controller
         $user = auth()->user();
         $isStudent = $user->isStudent();
         $canManage = $this->canManage();
+
         $coursesQuery = VideoCourse::with(['course', 'lessons' => function ($query) use ($isStudent) {
             if ($isStudent) {
                 $query->where('is_published', true);
@@ -43,11 +119,20 @@ class VideoLearningController extends Controller
 
         if ($isStudent) {
             $courseIds = $this->studentCourseIds();
-            $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
-            $coursesQuery->where('is_published', true)->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds);
-            $classesQuery->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds)->where(function ($query) use ($batchIds) {
-                $query->whereNull('batch_id')->orWhereIn('batch_id', $batchIds);
-            });
+            $batchIds = $user->student?->batches()
+                ->wherePivot('status', 'active')
+                ->pluck('batches.id')
+                ->all() ?? [];
+
+            $coursesQuery->where('is_published', true)
+                ->where('branch_id', $user->branch_id)
+                ->whereIn('course_id', $courseIds);
+
+            $classesQuery->where('branch_id', $user->branch_id)
+                ->whereIn('course_id', $courseIds)
+                ->where(function ($query) use ($batchIds) {
+                    $query->whereNull('batch_id')->orWhereIn('batch_id', $batchIds);
+                });
         } elseif ($user->isFaculty()) {
             $coursesQuery->where('branch_id', $user->branch_id);
             $classesQuery->where('faculty_id', $user->id);
@@ -58,29 +143,42 @@ class VideoLearningController extends Controller
 
         $videoCourses = $coursesQuery->latest()->get();
         $liveClasses = $classesQuery->get();
+
         $recordingsQuery = LiveRecording::with('liveClass.course')->where('status', 'ready');
+
         if ($isStudent) {
-            $studentBatchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
+            $studentBatchIds = $user->student?->batches()
+                ->wherePivot('status', 'active')
+                ->pluck('batches.id')
+                ->all() ?? [];
             $courseIds = $this->studentCourseIds();
+
             $recordingsQuery->whereHas('liveClass', function ($query) use ($studentBatchIds, $courseIds, $user) {
-                $query->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds)->where(function ($batchQuery) use ($studentBatchIds) {
-                    $batchQuery->whereNull('batch_id')->orWhereIn('batch_id', $studentBatchIds);
-                });
+                $query->where('branch_id', $user->branch_id)
+                    ->whereIn('course_id', $courseIds)
+                    ->where(function ($batchQuery) use ($studentBatchIds) {
+                        $batchQuery->whereNull('batch_id')->orWhereIn('batch_id', $studentBatchIds);
+                    });
             });
         } elseif ($user->isFaculty()) {
             $recordingsQuery->whereHas('liveClass', fn ($query) => $query->where('faculty_id', $user->id));
         } elseif (!$user->isSuperAdmin()) {
             $recordingsQuery->whereHas('liveClass', fn ($query) => $query->where('branch_id', $user->branch_id));
         }
+
         $recordings = $recordingsQuery->latest('completed_at')->limit(30)->get();
 
         $courses = Course::where('status', 'active')->orderBy('name')->get();
         $batches = Batch::where('status', 'active')->with('course')->orderBy('name')->get();
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
-        $faculty = \App\Models\User::where('user_type', 'faculty')->where('status', 'active')->orderBy('name')->get();
+        $faculty = \App\Models\User::where('user_type', 'faculty')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
 
         return view('video-learning.index', compact(
-            'videoCourses', 'liveClasses', 'recordings', 'courses', 'batches', 'branches', 'faculty', 'isStudent', 'canManage'
+            'videoCourses', 'liveClasses', 'recordings', 'courses', 'batches',
+            'branches', 'faculty', 'isStudent', 'canManage'
         ));
     }
 
@@ -93,26 +191,25 @@ class VideoLearningController extends Controller
             'branch_id' => 'required|exists:branches,id',
             'title' => 'required|string|max:191',
             'description' => 'nullable|string|max:5000',
+            'price' => 'required|numeric|min:0|max:99999999.99',
         ]);
 
         if (!auth()->user()->isSuperAdmin()) {
             $data['branch_id'] = auth()->user()->branch_id;
         }
+
         abort_unless($data['branch_id'], 422, 'A branch must be assigned before creating a video course.');
 
         $data['is_published'] = $request->boolean('is_published');
         VideoCourse::create($data);
 
-        return back()->with('success', 'Video course created successfully.');
+        return back()->with('success', 'Recorded video course created successfully.');
     }
 
     public function storeLesson(Request $request, VideoCourse $videoCourse)
     {
         abort_unless($this->canManage(), 403);
-
-        if (!auth()->user()->isSuperAdmin() && $videoCourse->branch_id !== auth()->user()->branch_id) {
-            abort(403);
-        }
+        abort_unless($this->canAccessVideoCourse($videoCourse), 403);
 
         $data = $request->validate([
             'title' => 'required|string|max:191',
@@ -122,12 +219,18 @@ class VideoLearningController extends Controller
             'subject_id' => 'nullable|exists:subjects,id',
         ]);
 
-        $data['provider'] = 'external';
+        if (!$this->isGoogleDriveUrl($data['source_url'])) {
+            return back()->withErrors([
+                'source_url' => 'Please paste a Google Drive sharing link for this recorded lesson.',
+            ])->withInput();
+        }
+
+        $data['provider'] = 'google_drive';
         $data['created_by'] = auth()->id();
         $data['is_published'] = $request->boolean('is_published');
         $videoCourse->lessons()->create($data);
 
-        return back()->with('success', 'Recorded lesson added to the course.');
+        return back()->with('success', 'Google Drive lesson added to the recorded course.');
     }
 
     public function storeLiveClass(Request $request)
@@ -141,9 +244,18 @@ class VideoLearningController extends Controller
             'faculty_id' => auth()->user()->isFaculty() ? 'nullable' : 'required|exists:users,id',
             'title' => 'required|string|max:191',
             'description' => 'nullable|string|max:3000',
+            'zoom_meeting_url' => 'required|url|max:2000',
+            'price' => 'required|numeric|min:0|max:99999999.99',
             'scheduled_start_at' => 'required|date|after:now',
             'scheduled_end_at' => 'required|date|after:scheduled_start_at',
         ]);
+
+        $zoomHost = strtolower(parse_url($data['zoom_meeting_url'], PHP_URL_HOST) ?: '');
+        if ($zoomHost !== 'zoom.us' && !str_ends_with($zoomHost, '.zoom.us')) {
+            return back()->withErrors([
+                'zoom_meeting_url' => 'Please paste a valid Zoom invitation URL.',
+            ])->withInput();
+        }
 
         $batch = !empty($data['batch_id']) ? Batch::findOrFail($data['batch_id']) : null;
         if ($batch && (int) $batch->course_id !== (int) $data['course_id']) {
@@ -151,22 +263,29 @@ class VideoLearningController extends Controller
         }
 
         $branchId = $batch?->branch_id ?: auth()->user()->branch_id ?: Branch::query()->value('id');
+
         if (!auth()->user()->isSuperAdmin()) {
-            abort_unless($branchId === auth()->user()->branch_id, 403);
+            abort_unless((int) $branchId === (int) auth()->user()->branch_id, 403);
         }
-        $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id());
-        $facultyMember = \App\Models\User::whereKey($facultyId)->where('user_type', 'faculty')->where('status', 'active')->first();
-        if (!$facultyMember || (int) $facultyMember->branch_id !== (int) $branchId) {
-            return back()->withErrors(['faculty_id' => 'Select an active faculty member from the class branch.'])->withInput();
-        }
-        if ($batch && !$batch->faculty()->where('users.id', $facultyId)->exists() && $batch->primary_mentor_id !== $facultyId) {
-            return back()->withErrors(['faculty_id' => 'Selected faculty is not assigned to this batch.'])->withInput();
-        }
+
         if (!$branchId) {
             return back()->withErrors(['branch_id' => 'Create a branch before scheduling live classes.'])->withInput();
         }
 
-        $roomName = 'class-' . Str::lower(Str::random(10)) . '-' . now()->format('Ymd');
+        $facultyId = auth()->user()->isFaculty() ? auth()->id() : ($data['faculty_id'] ?: auth()->id());
+        $facultyMember = \App\Models\User::whereKey($facultyId)
+            ->where('user_type', 'faculty')
+            ->where('status', 'active')
+            ->first();
+
+        if (!$facultyMember || (int) $facultyMember->branch_id !== (int) $branchId) {
+            return back()->withErrors(['faculty_id' => 'Select an active faculty member from the class branch.'])->withInput();
+        }
+
+        if ($batch && !$batch->faculty()->where('users.id', $facultyId)->exists() && $batch->primary_mentor_id !== $facultyId) {
+            return back()->withErrors(['faculty_id' => 'Selected faculty is not assigned to this batch.'])->withInput();
+        }
+
         LiveClass::create([
             'branch_id' => $branchId,
             'course_id' => $data['course_id'],
@@ -177,102 +296,59 @@ class VideoLearningController extends Controller
             'description' => $data['description'] ?? null,
             'scheduled_start_at' => $data['scheduled_start_at'],
             'scheduled_end_at' => $data['scheduled_end_at'],
-            'provider_room_name' => $roomName,
-            'recording_enabled' => true,
+            'zoom_meeting_url' => $data['zoom_meeting_url'],
+            'price' => $data['price'],
+            'provider' => 'zoom',
             'status' => 'scheduled',
         ]);
 
-        return back()->with('success', 'Live class scheduled. Automatic recording is enabled.');
+        return back()->with('success', 'Zoom live session scheduled successfully.');
     }
 
-    public function start(LiveClass $liveClass, LiveKitService $liveKit)
+    public function storeRecording(Request $request, LiveClass $liveClass)
     {
         abort_unless($this->canManage(), 403);
-        abort_unless(auth()->user()->isSuperAdmin() || (auth()->user()->isBranchManager() && $liveClass->branch_id === auth()->user()->branch_id) || (auth()->user()->isFaculty() && $liveClass->faculty_id === auth()->id()), 403);
-        abort_if($liveClass->status === 'live', 409, 'This class is already live.');
+        abort_unless($this->canAccessLiveClass($liveClass), 403);
 
-        if (!$liveKit->isConfigured()) {
-            return back()->withErrors(['livekit' => 'Configure LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET before starting a live room.']);
-        }
-
-        try {
-            $liveKit->createRoom($liveClass->provider_room_name);
-            $egress = $liveKit->startRecording($liveClass->provider_room_name);
-
-            DB::transaction(function () use ($liveClass, $egress) {
-                $liveClass->update(['status' => 'live']);
-                $liveClass->recordings()->create([
-                    'provider_egress_id' => $egress['egress_id'] ?? null,
-                    'status' => 'recording',
-                    'storage_disk' => 's3',
-                    'storage_key' => $egress['recording_path'] ?? null,
-                    'started_at' => now(),
-                ]);
-            });
-        } catch (Throwable $e) {
-            report($e);
-            return back()->withErrors(['livekit' => 'Could not start room and recording. Check LiveKit and storage configuration, then retry.']);
-        }
-
-        return $this->join($liveClass, $liveKit);
-    }
-
-    public function join(LiveClass $liveClass, LiveKitService $liveKit)
-    {
-        $user = auth()->user();
-        abort_unless(in_array($liveClass->status, ['live'], true), 409, 'This class is not live yet.');
-
-        if ($user->isStudent()) {
-            abort_unless($liveClass->branch_id === $user->branch_id && in_array($liveClass->course_id, $this->studentCourseIds()), 403);
-            if ($liveClass->batch_id) {
-                $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
-                abort_unless(in_array($liveClass->batch_id, $batchIds), 403);
-            }
-        } elseif ($user->isFaculty()) {
-            abort_unless($liveClass->faculty_id === $user->id, 403);
-        } elseif ($user->isBranchManager()) {
-            abort_unless($liveClass->branch_id === $user->branch_id, 403);
-        } elseif (!$user->isSuperAdmin()) {
-            abort(403);
-        }
-
-        if (!$liveKit->isConfigured()) {
-            return back()->withErrors(['livekit' => 'Live classroom is not configured yet.']);
-        }
-
-        $identity = (string) $user->id;
-        $token = $liveKit->createJoinToken(
-            $liveClass->provider_room_name,
-            $identity,
-            $user->name,
-            !$user->isStudent()
-        );
-
-        return view('video-learning.classroom', [
-            'liveClass' => $liveClass->load(['course', 'faculty']),
-            'livekitUrl' => $liveKit->serverUrl(),
-            'token' => $token,
-            'canPublish' => !$user->isStudent(),
+        $data = $request->validate([
+            'title' => 'required|string|max:191',
+            'playback_url' => 'required|url|max:2000',
+            'duration_seconds' => 'nullable|integer|min:1|max:86400',
         ]);
-    }
 
+        if (!$this->isGoogleDriveUrl($data['playback_url'])) {
+            return back()->withErrors([
+                'playback_url' => 'Please paste a Google Drive sharing link for the class recording.',
+            ])->withInput();
+        }
+
+        $data['drive_file_id'] = $this->googleDriveFileId($data['playback_url']);
+        $data['uploaded_by'] = auth()->id();
+        $data['status'] = 'ready';
+        $data['completed_at'] = now();
+        $liveClass->recordings()->create($data);
+
+        return back()->with('success', 'Google Drive class recording added.');
+    }
 
     public function showLesson(VideoLesson $lesson)
     {
         abort_unless($lesson->is_published || $this->canManage(), 404);
         $lesson->load('videoCourse.course');
-
-        if (auth()->user()->isStudent()) {
-            abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id && in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
-        } elseif (!auth()->user()->isSuperAdmin() && $lesson->videoCourse->branch_id !== auth()->user()->branch_id) {
-            abort(403);
-        }
+        abort_unless($this->canAccessVideoCourse($lesson->videoCourse), 403);
 
         $url = $lesson->source_url;
         abort_if(blank($url), 404, 'This lesson does not have a video source yet.');
+
         $embedUrl = null;
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
-        if ($host === 'youtu.be') {
+
+        if ($host === 'drive.google.com') {
+            $fileId = $this->googleDriveFileId($url);
+            if ($fileId) {
+                $embedUrl = 'https://drive.google.com/file/d/' . $fileId . '/preview';
+            }
+        } elseif ($host === 'youtu.be') {
             $embedUrl = 'https://www.youtube-nocookie.com/embed/' . trim(parse_url($url, PHP_URL_PATH) ?: '', '/');
         } elseif (in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com'], true)) {
             parse_str(parse_url($url, PHP_URL_QUERY) ?: '', $query);
@@ -298,11 +374,7 @@ class VideoLearningController extends Controller
     {
         abort_unless($lesson->is_published || $this->canManage(), 404);
         $lesson->loadMissing('videoCourse');
-        if (auth()->user()->isStudent()) {
-            abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id && in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
-        } elseif (!auth()->user()->isSuperAdmin()) {
-            abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id, 403);
-        }
+        abort_unless($this->canAccessVideoCourse($lesson->videoCourse), 403);
 
         $data = $request->validate([
             'watched_seconds' => 'required|integer|min:0|max:86400',
@@ -321,86 +393,17 @@ class VideoLearningController extends Controller
         return response()->json(['saved' => true]);
     }
 
-    public function playRecording(LiveRecording $recording)
+    public function showRecording(LiveRecording $recording)
     {
         $recording->load('liveClass');
-        $user = auth()->user();
+        abort_unless($recording->status === 'ready', 404);
+        abort_unless($this->canAccessLiveClass($recording->liveClass), 403);
 
-        if ($user->isStudent()) {
-            abort_unless($recording->liveClass->branch_id === $user->branch_id && in_array($recording->liveClass->course_id, $this->studentCourseIds()), 403);
-            if ($recording->liveClass->batch_id) {
-                $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
-                abort_unless(in_array($recording->liveClass->batch_id, $batchIds), 403);
-            }
-        } elseif ($user->isFaculty()) {
-            abort_unless($recording->liveClass->faculty_id === $user->id, 403);
-        } elseif ($user->isBranchManager()) {
-            abort_unless($recording->liveClass->branch_id === $user->branch_id, 403);
-        } elseif (!$user->isSuperAdmin()) {
-            abort(403);
-        }
+        $fileId = $recording->drive_file_id ?: $this->googleDriveFileId($recording->playback_url);
+        $embedUrl = $fileId
+            ? 'https://drive.google.com/file/d/' . $fileId . '/preview'
+            : $recording->playback_url;
 
-        abort_unless($recording->status === 'ready' && $recording->storage_key, 404);
-        $url = \Illuminate\Support\Facades\Storage::disk($recording->storage_disk ?: 's3')
-            ->temporaryUrl($recording->storage_key, now()->addMinutes(15));
-
-        return redirect()->away($url);
+        return view('video-learning.drive-recording', compact('recording', 'embedUrl'));
     }
-
-    public function webhook(Request $request, LiveKitService $liveKit)
-    {
-        $rawBody = $request->getContent();
-        abort_unless($liveKit->verifyWebhook($rawBody, $request->header('Authorization')), 401, 'Invalid LiveKit webhook signature.');
-
-        $event = json_decode($rawBody, true) ?: [];
-        $eventName = $event['event'] ?? '';
-        $roomName = data_get($event, 'room.name');
-
-        if ($eventName === 'egress_ended') {
-            $egress = $event['egressInfo'] ?? $event['egress_info'] ?? [];
-            $egressId = $egress['egressId'] ?? $egress['egress_id'] ?? null;
-            $status = $egress['status'] ?? null;
-            $recording = $egressId
-                ? LiveRecording::where('provider_egress_id', $egressId)->first()
-                : null;
-
-            if ($recording) {
-                $completed = in_array($status, [3, '3', 'EGRESS_COMPLETE'], true);
-                $recording->update([
-                    'status' => $completed ? 'ready' : 'failed',
-                    'completed_at' => now(),
-                    'duration_seconds' => (int) round((data_get($egress, 'fileResults.0.duration') ?? data_get($egress, 'file_results.0.duration') ?? 0) / 1000000000),
-                    'failure_reason' => $completed ? null : ($egress['error'] ?? 'LiveKit recording did not complete successfully.'),
-                ]);
-            }
-        } elseif ($eventName === 'room_finished' && $roomName) {
-            LiveClass::where('provider_room_name', $roomName)->update(['status' => 'completed']);
-        } elseif (in_array($eventName, ['participant_joined', 'participant_left'], true)) {
-            $participant = $event['participant'] ?? [];
-            $identity = $participant['identity'] ?? null;
-            if ($roomName && $identity && ctype_digit((string) $identity)) {
-                $class = LiveClass::where('provider_room_name', $roomName)->first();
-                if ($class) {
-                    $attendance = LiveClassAttendance::firstOrNew([
-                        'live_class_id' => $class->id,
-                        'participant_identity' => (string) $identity,
-                    ]);
-                    $attendance->user_id = (int) $identity;
-                    if ($eventName === 'participant_joined') {
-                        $attendance->joined_at = now();
-                        $attendance->left_at = null;
-                    } else {
-                        $attendance->left_at = now();
-                        if ($attendance->joined_at) {
-                            $attendance->duration_seconds = max(0, $attendance->joined_at->diffInSeconds($attendance->left_at));
-                        }
-                    }
-                    $attendance->save();
-                }
-            }
-        }
-
-        return response()->json(['received' => true]);
-    }
-
 }
