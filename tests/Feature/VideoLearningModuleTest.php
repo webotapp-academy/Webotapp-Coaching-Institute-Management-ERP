@@ -1,11 +1,11 @@
 <?php
 
-namespace Tests\\Feature;
+namespace Tests\Feature;
 
-use App\\Models\\Branch;
-use App\\Models\\Course;
-use App\\Models\\User;
-use Tests\\TestCase;
+use App\Models\Branch;
+use App\Models\Course;
+use App\Models\User;
+use Tests\TestCase;
 
 class VideoLearningModuleTest extends TestCase
 {
