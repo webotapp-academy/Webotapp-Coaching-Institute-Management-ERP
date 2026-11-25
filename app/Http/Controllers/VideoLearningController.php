@@ -44,8 +44,8 @@ class VideoLearningController extends Controller
         if ($isStudent) {
             $courseIds = $this->studentCourseIds();
             $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
-            $coursesQuery->where('is_published', true)->whereIn('course_id', $courseIds);
-            $classesQuery->whereIn('course_id', $courseIds)->where(function ($query) use ($batchIds) {
+            $coursesQuery->where('is_published', true)->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds);
+            $classesQuery->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds)->where(function ($query) use ($batchIds) {
                 $query->whereNull('batch_id')->orWhereIn('batch_id', $batchIds);
             });
         } elseif ($user->isFaculty()) {
@@ -63,7 +63,7 @@ class VideoLearningController extends Controller
             $studentBatchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
             $courseIds = $this->studentCourseIds();
             $recordingsQuery->whereHas('liveClass', function ($query) use ($studentBatchIds, $courseIds) {
-                $query->whereIn('course_id', $courseIds)->where(function ($batchQuery) use ($studentBatchIds) {
+                $query->where('branch_id', $user->branch_id)->whereIn('course_id', $courseIds)->where(function ($batchQuery) use ($studentBatchIds) {
                     $batchQuery->whereNull('batch_id')->orWhereIn('batch_id', $studentBatchIds);
                 });
             });
@@ -223,7 +223,7 @@ class VideoLearningController extends Controller
         abort_unless(in_array($liveClass->status, ['live'], true), 409, 'This class is not live yet.');
 
         if ($user->isStudent()) {
-            abort_unless(in_array($liveClass->course_id, $this->studentCourseIds()), 403);
+            abort_unless($liveClass->branch_id === $user->branch_id && in_array($liveClass->course_id, $this->studentCourseIds()), 403);
             if ($liveClass->batch_id) {
                 $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
                 abort_unless(in_array($liveClass->batch_id, $batchIds), 403);
@@ -263,7 +263,7 @@ class VideoLearningController extends Controller
         $lesson->load('videoCourse.course');
 
         if (auth()->user()->isStudent()) {
-            abort_unless(in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
+            abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id && in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
         } elseif (!auth()->user()->isSuperAdmin() && $lesson->videoCourse->branch_id !== auth()->user()->branch_id) {
             abort(403);
         }
@@ -299,7 +299,7 @@ class VideoLearningController extends Controller
         abort_unless($lesson->is_published || $this->canManage(), 404);
         $lesson->loadMissing('videoCourse');
         if (auth()->user()->isStudent()) {
-            abort_unless(in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
+            abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id && in_array($lesson->videoCourse->course_id, $this->studentCourseIds()), 403);
         } elseif (!auth()->user()->isSuperAdmin()) {
             abort_unless($lesson->videoCourse->branch_id === auth()->user()->branch_id, 403);
         }
@@ -327,7 +327,7 @@ class VideoLearningController extends Controller
         $user = auth()->user();
 
         if ($user->isStudent()) {
-            abort_unless(in_array($recording->liveClass->course_id, $this->studentCourseIds()), 403);
+            abort_unless($recording->liveClass->branch_id === $user->branch_id && in_array($recording->liveClass->course_id, $this->studentCourseIds()), 403);
             if ($recording->liveClass->batch_id) {
                 $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
                 abort_unless(in_array($recording->liveClass->batch_id, $batchIds), 403);
