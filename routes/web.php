@@ -9,7 +9,6 @@ use App\Http\Controllers\{
 };
 
 // Public Routes
-Route::post('/webhooks/livekit', [VideoLearningController::class, 'webhook'])->name('webhooks.livekit');
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/quick-login/{type}', [AuthController::class, 'quickLogin'])->name('quick-login');
@@ -69,9 +68,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/video-learning/lessons/{lesson}', [VideoLearningController::class, 'showLesson'])->name('video-learning.lessons.show');
     Route::post('/video-learning/lessons/{lesson}/progress', [VideoLearningController::class, 'saveProgress'])->name('video-learning.progress');
     Route::post('/video-learning/live-classes', [VideoLearningController::class, 'storeLiveClass'])->name('video-learning.live-classes.store');
-    Route::post('/video-learning/live-classes/{liveClass}/start', [VideoLearningController::class, 'start'])->name('video-learning.live-classes.start');
-    Route::post('/video-learning/live-classes/{liveClass}/join', [VideoLearningController::class, 'join'])->name('video-learning.live-classes.join');
-    Route::get('/video-learning/recordings/{recording}/play', [VideoLearningController::class, 'playRecording'])->name('video-learning.recordings.play');
+    Route::post('/video-learning/live-classes/{liveClass}/recordings', [VideoLearningController::class, 'storeRecording'])->name('video-learning.live-classes.recordings.store');
+    Route::get('/video-learning/recordings/{recording}', [VideoLearningController::class, 'showRecording'])->name('video-learning.recordings.show');
 
     // Certificates
     Route::get('/certificates', [CertificateController::class, 'index'])->name('certificates.index');
