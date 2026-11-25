@@ -5,7 +5,7 @@ use App\Http\Controllers\{
     AuthController, DashboardController, EnquiryController, AdmissionController,
     StudentController, CourseController, BatchController, AttendanceController,
     FeeController, ExamController, LmsController, CertificateController,
-    ExpenseController, ReportController, SettingsController
+    ExpenseController, ReportController, SettingsController, VideoLearningController
 };
 
 // Public Routes
@@ -60,6 +60,17 @@ Route::middleware('auth')->group(function () {
     Route::post('/lms/assignments', [LmsController::class, 'storeAssignment'])->name('lms.assignments.store');
     Route::get('/lms/materials', [LmsController::class, 'materials'])->name('lms.materials');
     Route::post('/lms/materials', [LmsController::class, 'storeMaterial'])->name('lms.materials.store');
+
+    // Video Learning, Recorded Lessons & Live Classroom
+    Route::get('/video-learning', [VideoLearningController::class, 'index'])->name('video-learning.index');
+    Route::post('/video-learning/courses', [VideoLearningController::class, 'storeCourse'])->name('video-learning.courses.store');
+    Route::post('/video-learning/courses/{videoCourse}/lessons', [VideoLearningController::class, 'storeLesson'])->name('video-learning.lessons.store');
+    Route::get('/video-learning/lessons/{lesson}', [VideoLearningController::class, 'showLesson'])->name('video-learning.lessons.show');
+    Route::post('/video-learning/lessons/{lesson}/progress', [VideoLearningController::class, 'saveProgress'])->name('video-learning.progress');
+    Route::post('/video-learning/live-classes', [VideoLearningController::class, 'storeLiveClass'])->name('video-learning.live-classes.store');
+    Route::post('/video-learning/live-classes/{liveClass}/start', [VideoLearningController::class, 'start'])->name('video-learning.live-classes.start');
+    Route::post('/video-learning/live-classes/{liveClass}/join', [VideoLearningController::class, 'join'])->name('video-learning.live-classes.join');
+    Route::get('/video-learning/recordings/{recording}/play', [VideoLearningController::class, 'playRecording'])->name('video-learning.recordings.play');
 
     // Certificates
     Route::get('/certificates', [CertificateController::class, 'index'])->name('certificates.index');
