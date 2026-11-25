@@ -39,8 +39,11 @@ class VideoLearningController extends Controller
 
         if ($isStudent) {
             $courseIds = $this->studentCourseIds();
+            $batchIds = $user->student?->batches()->wherePivot('status', 'active')->pluck('batches.id')->all() ?? [];
             $coursesQuery->whereIn('course_id', $courseIds);
-            $classesQuery->whereIn('course_id', $courseIds);
+            $classesQuery->whereIn('course_id', $courseIds)->where(function ($query) use ($batchIds) {
+                $query->whereNull('batch_id')->orWhereIn('batch_id', $batchIds);
+            });
         } elseif ($user->isFaculty()) {
             $coursesQuery->where('branch_id', $user->branch_id);
             $classesQuery->where('faculty_id', $user->id);
@@ -170,6 +173,8 @@ class VideoLearningController extends Controller
                 $liveClass->recordings()->create([
                     'provider_egress_id' => $egress['egress_id'] ?? null,
                     'status' => 'recording',
+                    'storage_disk' => 's3',
+                    'storage_key' => $egress['recording_path'] ?? null,
                     'started_at' => now(),
                 ]);
             });
